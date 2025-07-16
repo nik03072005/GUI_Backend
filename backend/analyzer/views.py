@@ -8,6 +8,15 @@ from django.http import JsonResponse
 from .models import UploadedLog
 from .serializers import UploadedLogSerializer, UserSerializer
 
+import pandas as pd
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import io
+import base64
+from .models import UploadedLog
+from datetime import datetime
 def home(request):
     return JsonResponse({"message": "🚀 Welcome to ISRO 1553B Backend API"})
 
@@ -45,3 +54,97 @@ class FileUploadView(APIView):
                 'uploaded_at': uploaded_file.uploaded_at,
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class BMDataEvaluationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, file_id):
+        try:
+            uploaded_log = UploadedLog.objects.get(id=file_id, user=request.user)
+            file_path = uploaded_log.file.path
+
+            df = self._parse_excel(file_path)
+            if df is None:
+                return Response({"error": "Invalid Excel file format or missing required columns."}, status=status.HTTP_400_BAD_REQUEST)
+            analysis = self._analyze_data(df)
+            return Response(analysis, status=status.HTTP_200_OK)
+
+        except UploadedLog.DoesNotExist:
+            return Response({"error": "File not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # def _parse_csv(self, path):
+    #     df = pd.read_csv(path)
+    #     df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
+    #     df.dropna(subset=['timestamp'], inplace=True)
+    #     df.sort_values('timestamp', inplace=True)
+    #     return df
+
+    def _parse_excel(self, file):
+        try:
+            df = pd.read_excel(file, engine='openpyxl')
+
+            if 'Timestamp' not in df.columns or 'MessageType' not in df.columns:
+                raise ValueError("Missing required columns: 'Timestamp' and/or 'MessageType'")
+
+            df = df[['Timestamp', 'MessageType']].copy()
+            df.rename(columns={'Timestamp': 'timestamp', 'MessageType': 'message_type'}, inplace=True)
+
+            df['timestamp'] = pd.to_datetime(df['timestamp'], format='%H:%M:%S.%f', errors='coerce')
+            base_time = df['timestamp'].min()
+            df['timestamp'] = (df['timestamp'] - base_time).dt.total_seconds()
+            df.dropna(subset=['timestamp'], inplace=True)
+            df.sort_values('timestamp', inplace=True)
+            return df
+
+        except Exception as e:
+            print(f"[Error parsing Excel file]: {e}")
+            return None
+
+    
+    def _analyze_data(self, df):
+        result = {}
+
+        for msg_type, group in df.groupby("message_type"):
+            timestamps = group["timestamp"].values
+            if len(timestamps) < 2:
+                continue
+
+            intervals = np.diff(timestamps)
+
+            result[msg_type] = {
+                "average_periodicity": round(float(np.mean(intervals)), 6),
+                "min_periodicity": round(float(np.min(intervals)), 6),
+                "max_periodicity": round(float(np.max(intervals)), 6),
+                "jitter_std_dev": round(float(np.std(intervals)), 6),
+                "periodicity_plot": self._plot_timestamps(timestamps, msg_type),
+                "jitter_histogram": self._plot_histogram(intervals, msg_type)
+            }
+
+        return result
+
+    def _plot_timestamps(self, timestamps, label):
+        plt.figure()
+        intervals = np.diff(timestamps)
+        plt.plot(range(len(intervals)), intervals, marker='o')
+        plt.title(f"Periodicity of {label}")
+        plt.xlabel("Occurrence")
+        plt.ylabel("Timestamp")
+        return self._encode_plot()
+
+    def _plot_histogram(self, intervals, label):
+        plt.figure()
+        plt.hist(intervals, bins=20, edgecolor='black')
+        plt.title(f"Jitter Histogram: {label}")
+        plt.xlabel("Interval (s)")
+        plt.ylabel("Frequency")
+        return self._encode_plot()
+
+    def _encode_plot(self):
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png')
+        buffer.seek(0)
+        encoded = base64.b64encode(buffer.read()).decode('utf-8')
+        plt.close()
+        return f"data:image/png;base64,{encoded}"
