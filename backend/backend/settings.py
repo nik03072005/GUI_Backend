@@ -103,16 +103,16 @@ DATABASES = {
 }
 
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'isro_db',           # <-- your PostgreSQL DB name
-        'USER': 'postgres',          # <-- your PostgreSQL username
-        'PASSWORD': 'pass1234', # <-- your PostgreSQL password
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'isro_db',           # <-- your PostgreSQL DB name
+#         'USER': 'postgres',          # <-- your PostgreSQL username
+#         'PASSWORD': 'pass1234', # <-- your PostgreSQL password
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
 
 
 # Password validation
