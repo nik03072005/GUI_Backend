@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import RegisterView, FileUploadView, home, CurrentUserView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from .views import BMDataEvaluationView
 
 urlpatterns = [
     path('', home),
@@ -9,4 +10,5 @@ urlpatterns = [
     path('current-user/', CurrentUserView.as_view(), name='current-user'),
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('evaluate/<int:file_id>/', BMDataEvaluationView.as_view(), name='bm-evaluate'),
 ]
