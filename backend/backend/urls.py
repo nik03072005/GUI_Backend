@@ -18,20 +18,17 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
 
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+def health_check(request):
+    return JsonResponse({"status": "healthy"})
 
 urlpatterns = [
+    path('', health_check, name='health_check'),  # Root health check
+    path('healthz/', health_check, name='health_check_alt'),  # Alternative health check
     path('admin/', admin.site.urls),
     
-    # JWT Auth Endpoints
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-
-    # Analyzer App Endpoints
+    # Analyzer App Endpoints (includes login)
     path('api/', include('analyzer.urls')),
 ]
 
