@@ -13,6 +13,11 @@ class UploadedLog(models.Model):
 class CustomUser(AbstractUser):
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=20, default='viewer')
+    email = models.EmailField(unique=True)  # Ensure email is unique for login
+    
+    # Make email the primary field for authentication
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username', 'full_name']  # Required when creating superuser
 
     def __str__(self):
-        return self.username
+        return self.email

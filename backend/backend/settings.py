@@ -56,8 +56,14 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # ✅ your Vite React dev server
+    "https://isro-gui-five.vercel.app",
+    "https://isro-frontend-cvc6naquc-nik03072005s-projects.vercel.app",
+    "http://localhost:3000",  # for local development
+    "http://localhost:5173",  # for Vite dev server
 ]
+
+# Or allow all Vercel preview deployments
+CORS_ALLOW_ALL_ORIGINS = True  # Only for development
 
 # Optional (if using cookies):
 CORS_ALLOW_CREDENTIALS = True

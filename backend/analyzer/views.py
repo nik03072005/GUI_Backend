@@ -3,8 +3,11 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status, permissions
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.decorators import api_view, permission_classes
 from django.http import JsonResponse
 from django.conf import settings
+from django.contrib.auth import authenticate, login, logout
+from rest_framework_simplejwt.tokens import RefreshToken
 import os
 import pandas as pd
 import numpy as np
@@ -21,6 +24,85 @@ from .serializers import UploadedLogSerializer, UserSerializer
 
 def home(request):
     return JsonResponse({"message": "🚀 Welcome to ISRO 1553B Backend API"})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_view(request):
+    """
+    Custom login view that accepts email or username with password
+    """
+    email_or_username = request.data.get('email') or request.data.get('username')
+    password = request.data.get('password')
+    
+    if not email_or_username or not password:
+        return Response({
+            'error': 'Email/username and password are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Import User model
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+    User = get_user_model()
+    
+    # Try to find user by email OR username
+    try:
+        user = User.objects.get(
+            Q(email__iexact=email_or_username) | Q(username__iexact=email_or_username)
+        )
+    except User.DoesNotExist:
+        return Response({
+            'error': 'Invalid credentials'
+        }, status=status.HTTP_401_UNAUTHORIZED)
+    except User.MultipleObjectsReturned:
+        # If multiple users found, try exact email match first
+        try:
+            user = User.objects.get(email__iexact=email_or_username)
+        except User.DoesNotExist:
+            try:
+                user = User.objects.get(username__iexact=email_or_username)
+            except User.DoesNotExist:
+                return Response({
+                    'error': 'Invalid credentials'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+    
+    # Check password
+    if user.check_password(password):
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            'message': 'Login successful',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'full_name': user.full_name,
+                'role': user.role,
+            },
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }
+        }, status=status.HTTP_200_OK)
+    else:
+        return Response({
+            'error': 'Invalid credentials'
+        }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    """
+    Logout view that blacklists the refresh token
+    """
+    try:
+        refresh_token = request.data["refresh"]
+        token = RefreshToken(refresh_token)
+        token.blacklist()
+        return Response({'message': 'Logout successful'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RegisterView(APIView):
