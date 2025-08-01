@@ -31,13 +31,20 @@ def home(request):
 def login_view(request):
     """
     Custom login view that accepts email or username with password
+    Compatible with JWT token endpoint format
     """
-    email_or_username = request.data.get('email') or request.data.get('username')
-    password = request.data.get('password')
+    # Handle both formats: {'email': ..., 'password': ...} or {'username': ..., 'password': ...}
+    email_or_username = (
+        request.data.get('email') or 
+        request.data.get('username') or 
+        request.data.get('Email') or 
+        request.data.get('Username')
+    )
+    password = request.data.get('password') or request.data.get('Password')
     
     if not email_or_username or not password:
         return Response({
-            'error': 'Email/username and password are required'
+            'detail': 'Email/username and password are required'  # Use 'detail' for JWT compatibility
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Import User model
@@ -52,7 +59,7 @@ def login_view(request):
         )
     except User.DoesNotExist:
         return Response({
-            'error': 'Invalid credentials'
+            'detail': 'No active account found with the given credentials'  # JWT format
         }, status=status.HTTP_401_UNAUTHORIZED)
     except User.MultipleObjectsReturned:
         # If multiple users found, try exact email match first
@@ -63,7 +70,7 @@ def login_view(request):
                 user = User.objects.get(username__iexact=email_or_username)
             except User.DoesNotExist:
                 return Response({
-                    'error': 'Invalid credentials'
+                    'detail': 'No active account found with the given credentials'
                 }, status=status.HTTP_401_UNAUTHORIZED)
     
     # Check password
@@ -71,22 +78,20 @@ def login_view(request):
         # Generate JWT tokens
         refresh = RefreshToken.for_user(user)
         return Response({
-            'message': 'Login successful',
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            # Additional user info (optional)
             'user': {
                 'id': user.id,
                 'username': user.username,
                 'email': user.email,
                 'full_name': user.full_name,
                 'role': user.role,
-            },
-            'tokens': {
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
             }
         }, status=status.HTTP_200_OK)
     else:
         return Response({
-            'error': 'Invalid credentials'
+            'detail': 'No active account found with the given credentials'
         }, status=status.HTTP_401_UNAUTHORIZED)
 
 
