@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import RegisterView, FileUploadView, home, CurrentUserView, login_view, logout_view
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import BMDataEvaluationView
+from .views import BMDataEvaluationView, health_check, list_files
 
 urlpatterns = [
     path('', home),
@@ -12,4 +12,6 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('logout/', logout_view, name='logout'),
     path('evaluate/<int:file_id>/', BMDataEvaluationView.as_view(), name='bm-evaluate'),
+    path('health/', health_check, name='health-check'),
+    path('files/', list_files, name='list-files'),
 ]

@@ -460,3 +460,49 @@ class BMDataEvaluationView(APIView):
         }
         sanitized_data = self._sanitize_data(response_data)
         return Response(sanitized_data, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+def health_check(request):
+    """Clean health check endpoint"""
+    try:
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    
+    return JsonResponse({
+        "status": "healthy",
+        "database": db_status,
+        "endpoints": ["/api/register/", "/api/login/", "/api/upload/", "/api/evaluate/<id>/", "/api/files/", "/api/health/"]
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_files(request):
+    """Clean files list endpoint"""
+    try:
+        files = UploadedLog.objects.filter(user=request.user).order_by('-uploaded_at')
+        files_data = []
+        
+        for file_obj in files:
+            files_data.append({
+                "id": file_obj.id,
+                "filename": file_obj.filename,
+                "uploaded_at": file_obj.uploaded_at.isoformat(),
+                "status": "processed"
+            })
+        
+        return JsonResponse({
+            "files": files_data,
+            "total": len(files_data)
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "error": "Failed to retrieve files",
+            "message": str(e)
+        }, status=500)
