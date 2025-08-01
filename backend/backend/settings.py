@@ -22,10 +22,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-&0g%14g(d1fa#j5yx4_@%53lz8&zro!og*e&yk%!qwg6ho-s(4'
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-&0g%14g(d1fa#j5yx4_@%53lz8&zro!og*e&yk%!qwg6ho-s(4')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = []
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
@@ -48,12 +48,15 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',  # Performance: Enable compression
+    'django.middleware.cache.UpdateCacheMiddleware',  # Performance: Cache middleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.cache.FetchFromCacheMiddleware',  # Performance: Cache middleware
 ]
 CORS_ALLOWED_ORIGINS = [
     "https://isro-gui-five.vercel.app",
@@ -94,10 +97,6 @@ AUTH_USER_MODEL = 'analyzer.CustomUser'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DEBUG = config('DEBUG', default=False, cast=bool)
-
-SECRET_KEY = config('SECRET_KEY')
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -106,20 +105,10 @@ DATABASES = {
         'PASSWORD': config('DATABASE_PASSWORD'),
         'HOST': config('DATABASE_HOST', default='localhost'),
         'PORT': config('DATABASE_PORT', default='5432'),
+        # Performance optimizations
+        'CONN_MAX_AGE': 600,  # Connection pooling (10 minutes)
     }
 }
-
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'isro_db',           # <-- your PostgreSQL DB name
-#         'USER': 'postgres',          # <-- your PostgreSQL username
-#         'PASSWORD': 'pass1234', # <-- your PostgreSQL password
-#         'HOST': 'localhost',
-#         'PORT': '5432',
-#     }
-# }
 
 
 # Password validation
@@ -159,7 +148,6 @@ USE_I18N = True
 
 USE_TZ = True
 
-AUTH_USER_MODEL = 'analyzer.CustomUser'
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
@@ -173,3 +161,50 @@ import os
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# ===============================
+# PERFORMANCE OPTIMIZATIONS
+# ===============================
+
+# Redis Cache Configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'TIMEOUT': 300,  # 5 minutes default cache timeout
+        'KEY_PREFIX': 'isro_backend',  # Clean namespace
+    }
+}
+
+# Cache middleware settings
+CACHE_MIDDLEWARE_ALIAS = 'default'
+CACHE_MIDDLEWARE_SECONDS = 300  # 5 minutes
+CACHE_MIDDLEWARE_KEY_PREFIX = ''
+
+# Security headers for performance
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+
+# File upload limits for performance
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+
+# Session performance
+SESSION_CACHE_ALIAS = 'default'
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# Production settings (when deployed)
+if not DEBUG:
+    # Security in production
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Static files optimization
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
