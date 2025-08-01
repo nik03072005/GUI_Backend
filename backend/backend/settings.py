@@ -28,7 +28,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-&0g%14g(d1fa#j5yx4_@%
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = []
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,testserver').split(',')
 
 
 # Application definition
@@ -49,14 +49,12 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.gzip.GZipMiddleware',  # Performance: Enable compression
-    'django.middleware.cache.UpdateCacheMiddleware',  # Performance: Cache middleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django.middleware.cache.FetchFromCacheMiddleware',  # Performance: Cache middleware
 ]
 CORS_ALLOWED_ORIGINS = [
     "https://isro-gui-five.vercel.app",
@@ -166,23 +164,36 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # PERFORMANCE OPTIMIZATIONS
 # ===============================
 
-# Redis Cache Configuration
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        },
-        'TIMEOUT': 300,  # 5 minutes default cache timeout
-        'KEY_PREFIX': 'isro_backend',  # Clean namespace
-    }
-}
+# Cache Configuration - Simplified for production compatibility
+REDIS_URL = config('REDIS_URL', default=None)
 
-# Cache middleware settings
-CACHE_MIDDLEWARE_ALIAS = 'default'
-CACHE_MIDDLEWARE_SECONDS = 300  # 5 minutes
-CACHE_MIDDLEWARE_KEY_PREFIX = ''
+if REDIS_URL:
+    # Use Redis if available (production)
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+                'IGNORE_EXCEPTIONS': True,  # Graceful fallback on Redis errors
+            },
+            'TIMEOUT': 300,
+            'KEY_PREFIX': 'isro',
+        }
+    }
+else:
+    # Fallback to local memory cache
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'isro-backend-cache',
+            'TIMEOUT': 300,
+            'OPTIONS': {
+                'MAX_ENTRIES': 1000,
+                'CULL_FREQUENCY': 3,
+            }
+        }
+    }
 
 # Security headers for performance
 SECURE_BROWSER_XSS_FILTER = True
@@ -193,9 +204,8 @@ X_FRAME_OPTIONS = 'DENY'
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 
-# Session performance
-SESSION_CACHE_ALIAS = 'default'
-SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+# Session configuration - Use database sessions for reliability
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 # Production settings (when deployed)

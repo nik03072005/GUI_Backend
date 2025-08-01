@@ -67,9 +67,13 @@ def login_view(request):
             'detail': 'Email/username and password are required'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Performance: Check rate limiting cache
+    # Performance: Check rate limiting cache with error handling
     cache_key = f"login_attempts_{request.META.get('REMOTE_ADDR', '')}"
-    attempts = cache.get(cache_key, 0)
+    try:
+        attempts = cache.get(cache_key, 0)
+    except Exception as e:
+        # If cache fails, continue without rate limiting
+        attempts = 0
     
     if attempts >= 5:  # Max 5 attempts per IP
         return Response({
@@ -83,21 +87,27 @@ def login_view(request):
     
     try:
         # Performance: Single query with Q objects
-        user = User.objects.select_for_update().get(
+        user = User.objects.get(
             Q(email__iexact=email_or_username) | Q(username__iexact=email_or_username)
         )
         
         # Performance: Check password with early return
         if not user.check_password(password):
-            # Increment failed attempts
-            cache.set(cache_key, attempts + 1, timeout=300)  # 5 min timeout
+            # Increment failed attempts with error handling
+            try:
+                cache.set(cache_key, attempts + 1, timeout=300)  # 5 min timeout
+            except Exception:
+                pass  # Continue even if cache fails
             return Response({
                 'detail': 'Invalid credentials'
             }, status=status.HTTP_401_UNAUTHORIZED)
             
     except User.DoesNotExist:
-        # Increment failed attempts
-        cache.set(cache_key, attempts + 1, timeout=300)
+        # Increment failed attempts with error handling
+        try:
+            cache.set(cache_key, attempts + 1, timeout=300)
+        except Exception:
+            pass  # Continue even if cache fails
         return Response({
             'detail': 'No active account found with the given credentials'
         }, status=status.HTTP_401_UNAUTHORIZED)
@@ -107,8 +117,11 @@ def login_view(request):
             'detail': 'Account configuration error. Please contact support.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # Performance: Clear failed attempts on success
-    cache.delete(cache_key)
+    # Performance: Clear failed attempts on success with error handling
+    try:
+        cache.delete(cache_key)
+    except Exception:
+        pass  # Continue even if cache fails
     
     # Generate JWT tokens
     refresh = RefreshToken.for_user(user)
