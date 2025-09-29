@@ -26,6 +26,7 @@ def health_check(request):
 urlpatterns = [
     path('', health_check, name='health_check'),  # Root health check
     path('healthz/', health_check, name='health_check_alt'),  # Alternative health check
+    path('api/health/', health_check, name='api_health_check'),  # API health check for Render
     path('admin/', admin.site.urls),
     
     # Analyzer App Endpoints (includes login)

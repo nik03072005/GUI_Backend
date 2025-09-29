@@ -25,6 +25,7 @@ six==1.17.0
 sqlparse==0.5.3
 tzdata==2025.2
 gunicorn==23.0.0
+dj-database-url==2.1.0
 # Production performance packages
 redis==4.5.4
 django-redis==5.4.0
