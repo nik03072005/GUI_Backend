@@ -19,9 +19,37 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.http import JsonResponse
+from django.db import connection
+import logging
+
+logger = logging.getLogger(__name__)
 
 def health_check(request):
-    return JsonResponse({"status": "healthy"})
+    """
+    Comprehensive health check that tests database connectivity
+    """
+    health_status = {
+        "status": "healthy",
+        "database": "disconnected",
+        "timestamp": None
+    }
+    
+    try:
+        # Test database connectivity
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            health_status["database"] = "connected"
+        
+        from django.utils import timezone
+        health_status["timestamp"] = timezone.now().isoformat()
+        
+    except Exception as e:
+        logger.warning(f"Health check database error: {e}")
+        health_status["database"] = f"error: {str(e)[:100]}"
+        health_status["status"] = "degraded"
+    
+    # Return 200 even if database is down - the app might still be partially functional
+    return JsonResponse(health_status)
 
 urlpatterns = [
     path('', health_check, name='health_check'),  # Root health check

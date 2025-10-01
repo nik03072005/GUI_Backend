@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
 from pathlib import Path
 from decouple import config
 
@@ -26,6 +27,10 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-&0g%14g(d1fa#j5yx4_@%
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
+
+# Port configuration for Render deployment
+PORT = int(os.environ.get('PORT', 8000))
+print(f"🚀 Server will run on port: {PORT}")
 
 ALLOWED_HOSTS = []
 # Handle Render deployment and local development
@@ -113,37 +118,55 @@ import dj_database_url
 # Try to get DATABASE_URL first (Render/Heroku style)
 DATABASE_URL = config('DATABASE_URL', default=None)
 
-if DATABASE_URL:
-    # Use DATABASE_URL if available (production)
-    DATABASES = {
-        'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, conn_health_checks=True)
-    }
-    # Ensure SSL is properly configured for Render
-    DATABASES['default']['OPTIONS'] = {
-        'sslmode': 'require',
-    }
-else:
-    # Fallback to individual database settings for local development
+# Graceful database configuration with fallbacks
+try:
+    if DATABASE_URL:
+        # Use DATABASE_URL if available (production)
+        print(f"🔗 Using DATABASE_URL for database connection")
+        db_config = dj_database_url.parse(DATABASE_URL, conn_max_age=600, conn_health_checks=True)
+        
+        # Ensure SSL is properly configured for Render
+        db_config['OPTIONS'] = {
+            'sslmode': 'require',
+            'connect_timeout': 10,
+        }
+        
+        # Add additional connection parameters for stability
+        db_config['CONN_MAX_AGE'] = 0  # Disable persistent connections to avoid issues
+        
+        DATABASES = {'default': db_config}
+        print(f"✅ Database configured: {db_config['ENGINE']} at {db_config.get('HOST', 'unknown')}")
+    else:
+        # Fallback to individual database settings for local development
+        print("🔧 Using individual database settings for local development")
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': config('DATABASE_NAME', default='isro_backend'),
+                'USER': config('DATABASE_USER', default='postgres'),
+                'PASSWORD': config('DATABASE_PASSWORD', default=''),
+                'HOST': config('DATABASE_HOST', default='localhost'),
+                'PORT': config('DATABASE_PORT', default='5432'),
+                'CONN_MAX_AGE': 0,  # Disable persistent connections
+                'OPTIONS': {
+                    'sslmode': 'prefer',
+                    'connect_timeout': 10,
+                },
+            }
+        }
+except Exception as e:
+    print(f"⚠️  Database configuration error: {e}")
+    print("🔄 Falling back to SQLite for local development")
     DATABASES = {
         'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': config('DATABASE_NAME', default='isro_backend'),
-            'USER': config('DATABASE_USER', default='postgres'),
-            'PASSWORD': config('DATABASE_PASSWORD', default=''),
-            'HOST': config('DATABASE_HOST', default='localhost'),
-            'PORT': config('DATABASE_PORT', default='5432'),
-            # Performance optimizations
-            'CONN_MAX_AGE': 600,  # Connection pooling (10 minutes)
-            'CONN_HEALTH_CHECKS': True,
-            'OPTIONS': {
-                'sslmode': 'prefer',
-            },
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
 
-# Additional fallback to SQLite for local development when no PostgreSQL is available
+# Final fallback to SQLite if no PostgreSQL configuration
 if not DATABASE_URL and not config('DATABASE_PASSWORD', default=None):
-    print("⚠️  Using SQLite for local development - PostgreSQL not configured")
+    print("⚠️  No PostgreSQL configuration found - using SQLite for local development")
     DATABASES['default'] = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
@@ -194,15 +217,17 @@ STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Additional locations of static files
-STATICFILES_DIRS = [
-    BASE_DIR / 'static',
-]
+STATICFILES_DIRS = []
+
+# Only add static dir if it exists
+static_dir = BASE_DIR / 'static'
+if static_dir.exists():
+    STATICFILES_DIRS.append(static_dir)
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-import os
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
