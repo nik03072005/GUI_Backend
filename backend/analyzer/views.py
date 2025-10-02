@@ -9,6 +9,7 @@ from django.http import JsonResponse
 from django.conf import settings
 from django.core.cache import cache
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model
 import os
 import pandas as pd
 import numpy as np
@@ -22,6 +23,8 @@ import math
 
 from .models import UploadedLog
 from .serializers import UploadedLogSerializer, UserSerializer
+
+User = get_user_model()
 
 
 # Performance: Custom throttling classes
@@ -172,6 +175,81 @@ class CurrentUserView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data)
+    
+    def put(self, request):
+        """Update user profile (full_name, email)"""
+        user = request.user
+        
+        # Only allow updating certain fields
+        allowed_fields = ['full_name', 'email']
+        update_data = {key: value for key, value in request.data.items() if key in allowed_fields}
+        
+        if not update_data:
+            return Response({
+                'detail': 'No valid fields to update. Allowed fields: full_name, email'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate email uniqueness if provided
+        if 'email' in update_data:
+            email = update_data['email']
+            if User.objects.filter(email=email).exclude(id=user.id).exists():
+                return Response({
+                    'detail': 'A user with this email already exists.'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update user fields
+        for field, value in update_data.items():
+            setattr(user, field, value)
+        
+        try:
+            user.save()
+            serializer = UserSerializer(user)
+            return Response({
+                'message': 'Profile updated successfully',
+                'user': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'detail': f'Error updating profile: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password_view(request):
+    """Change user password"""
+    user = request.user
+    old_password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+    
+    if not old_password or not new_password:
+        return Response({
+            'detail': 'Both old_password and new_password are required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check if old password is correct
+    if not user.check_password(old_password):
+        return Response({
+            'detail': 'Old password is incorrect'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Validate new password length
+    if len(new_password) < 8:
+        return Response({
+            'detail': 'New password must be at least 8 characters long'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Set new password
+    try:
+        user.set_password(new_password)
+        user.save()
+        return Response({
+            'message': 'Password changed successfully'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'detail': f'Error changing password: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class FileUploadView(APIView):

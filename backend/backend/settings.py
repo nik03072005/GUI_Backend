@@ -115,61 +115,115 @@ AUTH_USER_MODEL = 'analyzer.CustomUser'
 
 import dj_database_url
 
-# Try to get DATABASE_URL first (Render/Heroku style)
+# Supabase Database Configuration with robust fallback
 DATABASE_URL = config('DATABASE_URL', default=None)
 
-# Graceful database configuration with fallbacks
-try:
+def configure_database_with_fallback():
+    """Configure database with Supabase support and SQLite fallback"""
+    
+    # Only try Supabase if DATABASE_URL is explicitly provided
     if DATABASE_URL:
-        # Use DATABASE_URL if available (production)
-        print(f"🔗 Using DATABASE_URL for database connection")
-        db_config = dj_database_url.parse(DATABASE_URL, conn_max_age=600, conn_health_checks=True)
+        print(f"🔗 Attempting Supabase connection with DATABASE_URL...")
         
-        # Ensure SSL is properly configured for Render
-        db_config['OPTIONS'] = {
-            'sslmode': 'require',
-            'connect_timeout': 10,
-        }
-        
-        # Add additional connection parameters for stability
-        db_config['CONN_MAX_AGE'] = 0  # Disable persistent connections to avoid issues
-        
-        DATABASES = {'default': db_config}
-        print(f"✅ Database configured: {db_config['ENGINE']} at {db_config.get('HOST', 'unknown')}")
-    else:
-        # Fallback to individual database settings for local development
-        print("🔧 Using individual database settings for local development")
-        DATABASES = {
-            'default': {
-                'ENGINE': 'django.db.backends.postgresql',
-                'NAME': config('DATABASE_NAME', default='isro_backend'),
-                'USER': config('DATABASE_USER', default='postgres'),
-                'PASSWORD': config('DATABASE_PASSWORD', default=''),
-                'HOST': config('DATABASE_HOST', default='localhost'),
-                'PORT': config('DATABASE_PORT', default='5432'),
-                'CONN_MAX_AGE': 0,  # Disable persistent connections
-                'OPTIONS': {
-                    'sslmode': 'prefer',
+        try:
+            # Test if we can resolve the hostname first
+            import socket
+            from urllib.parse import urlparse
+            
+            parsed_url = urlparse(DATABASE_URL)
+            hostname = parsed_url.hostname
+            
+            if hostname:
+                # Quick DNS resolution test
+                socket.gethostbyname(hostname)
+                print(f"✅ DNS resolution successful for {hostname}")
+                
+                # Parse the Supabase DATABASE_URL
+                db_config = dj_database_url.parse(DATABASE_URL, conn_max_age=0)
+                
+                # Supabase requires SSL - configure proper SSL settings
+                db_config['OPTIONS'] = {
+                    'sslmode': 'require',
                     'connect_timeout': 10,
-                },
-            }
-        }
-except Exception as e:
-    print(f"⚠️  Database configuration error: {e}")
-    print("🔄 Falling back to SQLite for local development")
-    DATABASES = {
+                    'application_name': 'ISRO_Backend_Django'
+                }
+                
+                # Connection pool settings for Supabase
+                db_config['CONN_MAX_AGE'] = 0  # Disable persistent connections for free tier
+                db_config['CONN_HEALTH_CHECKS'] = True
+                
+                print(f"✅ Supabase database configured: {hostname}")
+                return {'default': db_config}
+            
+        except socket.gaierror as e:
+            print(f"❌ DNS resolution failed for Supabase host: {e}")
+            print("🔄 This usually means the Supabase project is paused or hostname is incorrect")
+        except Exception as e:
+            print(f"⚠️  Supabase DATABASE_URL configuration failed: {e}")
+    
+    # Try individual environment variables only if DATABASE_URL failed
+    supabase_host = config('DATABASE_HOST', default=None)
+    if supabase_host and DATABASE_URL is None:  # Only if no DATABASE_URL was attempted
+        print(f"🔧 Trying individual Supabase environment variables...")
+        
+        try:
+            import socket
+            socket.gethostbyname(supabase_host)
+            
+            supabase_name = config('DATABASE_NAME', default='postgres')
+            supabase_user = config('DATABASE_USER', default='postgres')
+            supabase_password = config('DATABASE_PASSWORD', default=None)
+            supabase_port = config('DATABASE_PORT', default='5432')
+            
+            if supabase_password:
+                return {
+                    'default': {
+                        'ENGINE': 'django.db.backends.postgresql',
+                        'NAME': supabase_name,
+                        'USER': supabase_user,
+                        'PASSWORD': supabase_password,
+                        'HOST': supabase_host,
+                        'PORT': supabase_port,
+                        'OPTIONS': {
+                            'sslmode': 'require',
+                            'connect_timeout': 10,
+                            'application_name': 'ISRO_Backend_Django'
+                        },
+                        'CONN_MAX_AGE': 0,
+                    }
+                }
+        except socket.gaierror:
+            print(f"❌ DNS resolution failed for {supabase_host}")
+        except Exception as e:
+            print(f"⚠️  Individual Supabase configuration failed: {e}")
+    
+    # Fallback to SQLite for local development
+    print("🗃️  No working PostgreSQL configuration found")
+    print("� Using SQLite for local development")
+    return {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
 
-# Final fallback to SQLite if no PostgreSQL configuration
-if not DATABASE_URL and not config('DATABASE_PASSWORD', default=None):
-    print("⚠️  No PostgreSQL configuration found - using SQLite for local development")
-    DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Configure database with comprehensive error handling
+try:
+    DATABASES = configure_database_with_fallback()
+    db_engine = DATABASES['default']['ENGINE']
+    if 'sqlite' in db_engine:
+        print("✅ Using SQLite database for local development")
+    else:
+        print("✅ Using PostgreSQL database (Supabase)")
+        
+except Exception as e:
+    print(f"❌ Critical database configuration error: {e}")
+    print("🔄 Emergency fallback to SQLite")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
 
 
